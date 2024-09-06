@@ -16,3 +16,9 @@ app:
   runtime:
     name: nodejs20.x
   id: ari:cloud:ecosystem::app/7daa03d5-35d5-4cbc-bdf4-e2aa59168bce
+permissions:
+  scopes:
+    - read:jira-work
+    - read:board-scope:jira-software
+    - read:project:jira
+    - read:sprint:jira-software
