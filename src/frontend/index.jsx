@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import ForgeReconciler, {
   Text,
-  useProductContext,
   Select,
   Button,
   Stack,
@@ -9,9 +8,12 @@ import ForgeReconciler, {
   Tabs, Tab, TabList, TabPanel,
   TextArea,
   SectionMessage,
-  Box
+  Box,
+  Heading,
+  Inline
 } from "@forge/react";
 import { invoke } from "@forge/bridge";
+import api from "@forge/api";
 
 const fetchProjects = async () => {
   const response = await invoke('getProjects');
@@ -34,7 +36,15 @@ const fetchIssuesByJQL = async (jql) => {
   return response;
 };
 
-const calculateMetrics = (issues) => {
+const saveUserPreferences = async (project, board, sprint, jql, option) => {
+  await api.user.storage.set('userPreferences', { project, board, sprint, jql, option });
+};
+
+const getUserPreferences = async () => {
+  return await api.user.storage.get('userPreferences');
+};
+
+const calculateMetrics = (issues, totalWorkingHours) => {
   const metrics = {};
   issues.forEach(issue => {
     const developer = issue.fields.assignee?.displayName || 'Unassigned';
@@ -67,21 +77,27 @@ const calculateMetrics = (issues) => {
   for (const developer in metrics) {
     metrics[developer].averageCycleTime = metrics[developer].numberOfTasksCompleted > 0 ? 
       metrics[developer].totalCycleTime / metrics[developer].numberOfTasksCompleted : 0;
-    metrics[developer].workloadDifference = metrics[developer].totalTimeSpent - 40; // Example calculation
-    metrics[developer].workloadCompliance = metrics[developer].totalEstimatedTime - 40; // Example calculation
+    metrics[developer].workloadDifference = metrics[developer].totalTimeSpent - totalWorkingHours;
+    metrics[developer].workloadCompliance = metrics[developer].totalEstimatedTime - totalWorkingHours;
   }
 
   return metrics;
 };
 
-const decodeHtmlEntities = (text) => {
-  const textArea = document.createElement('textarea');
-  textArea.innerHTML = text;
-  return textArea.value;
+const calculateWorkingDays = (startDate, endDate) => {
+  let count = 0;
+  const currentDate = new Date(startDate);
+  while (currentDate <= new Date(endDate)) {
+    const dayOfWeek = currentDate.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Skip Sundays and Saturdays
+      count++;
+    }
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  return count;
 };
 
 const App = () => {
-  const context = useProductContext();
   const [projects, setProjects] = useState([]);
   const [boards, setBoards] = useState([]);
   const [sprints, setSprints] = useState([]);
@@ -89,10 +105,26 @@ const App = () => {
   const [selectedBoard, setSelectedBoard] = useState(null);
   const [selectedSprint, setSelectedSprint] = useState(null);
   const [metrics, setMetrics] = useState(null);
+  const [totalWorkingHours, setTotalWorkingHours] = useState(null);
+  const [lastRefreshTime, setLastRefreshTime] = useState(null);
   const [jql, setJql] = useState('');
   const [selectedTab, setSelectedTab] = useState(0);
 
   useEffect(() => {
+    // Load saved preferences if they exist
+    const loadUserPreferences = async () => {
+      const preferences = await getUserPreferences();
+      if (preferences) {
+        setSelectedTab(preferences.option === 'jql' ? 1 : 0);
+        setSelectedProject(preferences.project);
+        setSelectedBoard(preferences.board);
+        setSelectedSprint(preferences.sprint);
+        setJql(preferences.jql);
+      }
+    };
+    loadUserPreferences();
+
+    // Load projects
     const loadProjects = async () => {
       const fetchedProjects = await fetchProjects();
       setProjects(fetchedProjects);
@@ -122,13 +154,25 @@ const App = () => {
 
   const handleSubmit = async () => {
     let issues;
+    let sprintDetails;
+
     if (selectedTab === 0 && selectedProject && selectedSprint) {
+      sprintDetails = await invoke('getSprintDetails', { sprintId: selectedSprint.value });
+      const workingDays = calculateWorkingDays(sprintDetails.startDate, sprintDetails.endDate);
+      const workingHours = workingDays * 7; // 7 working hours per day
+      setTotalWorkingHours(workingHours);
+
       issues = await invoke('getSprintData', { projectId: selectedProject.value, sprintId: selectedSprint.value });
     } else {
       issues = await fetchIssuesByJQL(jql);
     }
-    const calculatedMetrics = calculateMetrics(issues);
+
+    const calculatedMetrics = calculateMetrics(issues, totalWorkingHours);
     setMetrics(calculatedMetrics);
+    setLastRefreshTime(new Date().toLocaleString());
+
+    // Save the user preferences
+    await saveUserPreferences(selectedProject, selectedBoard, selectedSprint, jql, selectedTab === 0 ? 'project' : 'jql');
   };
 
   return (
@@ -140,53 +184,55 @@ const App = () => {
         </TabList>
       </Tabs>
 
-      {/* Adding space between Tabs and Project/Board/Sprint */}
+      {/* Adding space between Tabs and the Select Inputs */}
       <Box padding="space.200" />
 
-      {selectedTab === 0 && (
-        <Stack space="space.200">
-          <Select
-            placeholder="Select Project"
-            options={projects}
-            onChange={(value) => setSelectedProject(value)}
-          />
-          {selectedProject && (
-            <Select
-              placeholder="Select Board"
-              options={boards}
-              onChange={(value) => setSelectedBoard(value)}
-            />
-          )}
-          {selectedBoard && (
-            <Select
-              placeholder="Select Sprint"
-              options={sprints}
-              onChange={(value) => setSelectedSprint(value)}
-            />
-          )}
-        </Stack>
-      )}
-
-      {selectedTab === 1 && (
-        <TextArea
-          placeholder="Enter JQL"
-          value={jql}
-          onChange={(e) => setJql(e.target.value)}
+      <Stack space="space.200">
+        {/* Display all filters at once */}
+        <Select
+          placeholder="Select Project"
+          options={projects}
+          value={selectedProject}
+          onChange={(value) => setSelectedProject(value)}
         />
-      )}
 
-      {selectedTab === 1 && (
-        <SectionMessage appearance="warning">
-          Your JQL query must include the project and sprint IDs.
-        </SectionMessage>
-      )}
+        <Select
+          placeholder="Select Board"
+          options={boards}
+          value={selectedBoard}
+          onChange={(value) => setSelectedBoard(value)}
+          isDisabled={!selectedProject} // Disable Board Select if no project is selected
+        />
 
-      <Box>
-        {/* Button with normal width */}
+        <Select
+          placeholder="Select Sprint"
+          options={sprints}
+          value={selectedSprint}
+          onChange={(value) => setSelectedSprint(value)}
+          isDisabled={!selectedBoard} // Disable Sprint Select if no board is selected
+        />
+
+        {selectedTab === 1 && (
+          <>
+            <TextArea
+              placeholder="Enter JQL"
+              value={jql}
+              onChange={(e) => setJql(e.target.value)}
+            />
+            <SectionMessage appearance="warning">
+              Your JQL query must include the project and sprint IDs.
+            </SectionMessage>
+          </>
+        )}
+
         <Button appearance="primary" onClick={handleSubmit}>
           Generate Report
         </Button>
-      </Box>
+      </Stack>
+
+      {totalWorkingHours && (
+        <Heading as="h5">Total Working Hours in Sprint: {totalWorkingHours}</Heading>
+      )}
 
       {metrics && (
         <DynamicTable
@@ -218,6 +264,10 @@ const App = () => {
             ]
           }))}
         />
+      )}
+
+      {lastRefreshTime && (
+        <Heading as="h6">Last Refresh Time: {lastRefreshTime}</Heading>
       )}
     </Stack>
   );
