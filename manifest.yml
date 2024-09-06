@@ -1,0 +1,18 @@
+modules:
+  jira:projectPage:
+    - key: developer-performance-by-sprint-hello-world-project-page
+      resource: main
+      resolver:
+        function: resolver
+      render: native
+      title: Developer Performance by sprint
+  function:
+    - key: resolver
+      handler: index.handler
+resources:
+  - key: main
+    path: src/frontend/index.jsx
+app:
+  runtime:
+    name: nodejs20.x
+  id: ari:cloud:ecosystem::app/7daa03d5-35d5-4cbc-bdf4-e2aa59168bce
