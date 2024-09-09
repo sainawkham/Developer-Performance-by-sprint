@@ -1,10 +1,25 @@
 import Resolver from '@forge/resolver';
-import api, { route } from '@forge/api';
+import api, { storage, route } from '@forge/api';
 
 const resolver = new Resolver();
 
 let selectedProject = null;
 let selectedSprint = null;
+
+// Save user preferences
+resolver.define('saveUserPreferences', async ({ payload }) => {
+  const { project, board, sprint, jql, option } = payload;
+  console.log('Saving user preferences:', { project, board, sprint, jql, option });
+  await storage.set('userPreferences', { project, board, sprint, jql, option });
+  return 'Preferences saved successfully.';
+});
+
+// Get user preferences
+resolver.define('getUserPreferences', async () => {
+  const preferences = await storage.get('userPreferences');
+  console.log('Retrieved user preferences:', preferences);
+  return preferences || {};
+});
 
 resolver.define('getProjects', async () => {
   const response = await api.asApp().requestJira(route`/rest/api/3/project/search`);
@@ -22,7 +37,6 @@ resolver.define('getSprints', async (req) => {
   const { boardId } = req.payload;
   const response = await api.asApp().requestJira(route`/rest/agile/1.0/board/${boardId}/sprint`);
   const data = await response.json();  
-  console.log("getSprints data: ", data.values );
   return data.values;
 });
 

@@ -22,4 +22,5 @@ permissions:
     - read:board-scope:jira-software
     - read:project:jira
     - read:sprint:jira-software
+    - storage:app
  

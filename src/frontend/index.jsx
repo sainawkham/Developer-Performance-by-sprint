@@ -13,7 +13,6 @@ import ForgeReconciler, {
   Inline
 } from "@forge/react";
 import { invoke } from "@forge/bridge";
-import api from "@forge/api";
 
 const fetchProjects = async () => {
   const response = await invoke('getProjects');
@@ -36,12 +35,18 @@ const fetchIssuesByJQL = async (jql) => {
   return response;
 };
 
+// Save user preferences
 const saveUserPreferences = async (project, board, sprint, jql, option) => {
-  await api.user.storage.set('userPreferences', { project, board, sprint, jql, option });
+  console.log('Saving user preferences:', { project, board, sprint, jql, option });
+  await invoke('saveUserPreferences', { project, board, sprint, jql, option });
+  console.log('Preferences saved successfully.');
 };
 
+// Get user preferences
 const getUserPreferences = async () => {
-  return await api.user.storage.get('userPreferences');
+  const preferences = await invoke('getUserPreferences');
+  console.log('Retrieved user preferences:', preferences);
+  return preferences;
 };
 
 const calculateMetrics = (issues, totalWorkingHours) => {
@@ -110,26 +115,24 @@ const App = () => {
   const [jql, setJql] = useState('');
   const [selectedTab, setSelectedTab] = useState(0);
 
+  // State to track if the auto-submit has been triggered
+  const [autoSubmitTriggered, setAutoSubmitTriggered] = useState(false);
+
   useEffect(() => {
-    // Load saved preferences if they exist
     const loadUserPreferences = async () => {
       const preferences = await getUserPreferences();
-      if (preferences) {
-        setSelectedTab(preferences.option === 'jql' ? 1 : 0);
+      if (preferences && preferences.project && preferences.sprint) {
         setSelectedProject(preferences.project);
         setSelectedBoard(preferences.board);
         setSelectedSprint(preferences.sprint);
         setJql(preferences.jql);
+        setSelectedTab(preferences.option === 'jql' ? 1 : 0);
+      } else {
+        const projects = await fetchProjects();
+        setProjects(projects);
       }
     };
     loadUserPreferences();
-
-    // Load projects
-    const loadProjects = async () => {
-      const fetchedProjects = await fetchProjects();
-      setProjects(fetchedProjects);
-    };
-    loadProjects();
   }, []);
 
   useEffect(() => {
@@ -152,6 +155,14 @@ const App = () => {
     }
   }, [selectedBoard]);
 
+  // Automatically submit the form when all filters are pre-filled from user preferences
+  useEffect(() => {
+    if (selectedProject && selectedBoard && selectedSprint && !autoSubmitTriggered) {
+      handleSubmit();  // Automatically generate the report
+      setAutoSubmitTriggered(true); // Avoid re-triggering the auto-submit
+    }
+  }, [selectedProject, selectedBoard, selectedSprint, autoSubmitTriggered]);
+
   const handleSubmit = async () => {
     let issues;
     let sprintDetails;
@@ -171,7 +182,7 @@ const App = () => {
     setMetrics(calculatedMetrics);
     setLastRefreshTime(new Date().toLocaleString());
 
-    // Save the user preferences
+    // Save user preferences when the report is generated
     await saveUserPreferences(selectedProject, selectedBoard, selectedSprint, jql, selectedTab === 0 ? 'project' : 'jql');
   };
 
@@ -184,51 +195,52 @@ const App = () => {
         </TabList>
       </Tabs>
 
-      {/* Adding space between Tabs and the Select Inputs */}
       <Box padding="space.200" />
 
-      <Stack space="space.200">
-        {/* Display all filters at once */}
-        <Select
-          placeholder="Select Project"
-          options={projects}
-          value={selectedProject}
-          onChange={(value) => setSelectedProject(value)}
-        />
+      {selectedTab === 0 && (
+        <Stack space="space.200">
+          <Select
+            placeholder="Select Project"
+            options={projects}
+            value={selectedProject}
+            onChange={(value) => setSelectedProject(value)}
+          />
 
-        <Select
-          placeholder="Select Board"
-          options={boards}
-          value={selectedBoard}
-          onChange={(value) => setSelectedBoard(value)}
-          isDisabled={!selectedProject} // Disable Board Select if no project is selected
-        />
+          <Select
+            placeholder="Select Board"
+            options={boards}
+            value={selectedBoard}
+            onChange={(value) => setSelectedBoard(value)}
+            isDisabled={!selectedProject} // Disable Board Select if no project is selected
+          />
 
-        <Select
-          placeholder="Select Sprint"
-          options={sprints}
-          value={selectedSprint}
-          onChange={(value) => setSelectedSprint(value)}
-          isDisabled={!selectedBoard} // Disable Sprint Select if no board is selected
-        />
+          <Select
+            placeholder="Select Sprint"
+            options={sprints}
+            value={selectedSprint}
+            onChange={(value) => setSelectedSprint(value)}
+            isDisabled={!selectedBoard} // Disable Sprint Select if no board is selected
+          />
+        </Stack>
+      )}
 
-        {selectedTab === 1 && (
-          <>
-            <TextArea
-              placeholder="Enter JQL"
-              value={jql}
-              onChange={(e) => setJql(e.target.value)}
-            />
-            <SectionMessage appearance="warning">
-              Your JQL query must include the project and sprint IDs.
-            </SectionMessage>
-          </>
-        )}
-
+      {selectedTab === 1 && (
+        <>
+          <TextArea
+            placeholder="Enter JQL"
+            value={jql}
+            onChange={(e) => setJql(e.target.value)}
+          />
+          <SectionMessage appearance="warning">
+            Your JQL query must include the project and sprint IDs.
+          </SectionMessage>
+        </>
+      )}
+      <Box>
         <Button appearance="primary" onClick={handleSubmit}>
           Generate Report
         </Button>
-      </Stack>
+      </Box>
 
       {totalWorkingHours && (
         <Heading as="h5">Total Working Hours in Sprint: {totalWorkingHours}</Heading>
