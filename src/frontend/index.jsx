@@ -5,12 +5,17 @@ import ForgeReconciler, {
   Button,
   Stack,
   DynamicTable,
-  Tabs, Tab, TabList, TabPanel,
+  Tabs, Tab, TabList,
   TextArea,
   SectionMessage,
   Box,
   Heading,
-  Inline
+  Modal,
+  ModalBody,
+  ModalTransition,
+  ModalTitle,
+  ModalFooter,
+  ModalHeader
 } from "@forge/react";
 import { invoke } from "@forge/bridge";
 
@@ -114,12 +119,15 @@ const App = () => {
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
   const [jql, setJql] = useState('');
   const [selectedTab, setSelectedTab] = useState(0);
-
-  // State to track if the auto-submit has been triggered
   const [autoSubmitTriggered, setAutoSubmitTriggered] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const loadUserPreferences = async () => {
+      const projects = await fetchProjects();
+      setProjects(projects);
+  
       const preferences = await getUserPreferences();
       if (preferences && preferences.project && preferences.sprint) {
         setSelectedProject(preferences.project);
@@ -127,13 +135,10 @@ const App = () => {
         setSelectedSprint(preferences.sprint);
         setJql(preferences.jql);
         setSelectedTab(preferences.option === 'jql' ? 1 : 0);
-      } else {
-        const projects = await fetchProjects();
-        setProjects(projects);
       }
     };
     loadUserPreferences();
-  }, []);
+  }, []);  
 
   useEffect(() => {
     if (selectedProject) {
@@ -155,7 +160,6 @@ const App = () => {
     }
   }, [selectedBoard]);
 
-  // Automatically submit the form when all filters are pre-filled from user preferences
   useEffect(() => {
     if (selectedProject && selectedBoard && selectedSprint && !autoSubmitTriggered) {
       handleSubmit();  // Automatically generate the report
@@ -164,6 +168,9 @@ const App = () => {
   }, [selectedProject, selectedBoard, selectedSprint, autoSubmitTriggered]);
 
   const handleSubmit = async () => {
+    setIsLoading(true);
+    setIsModalOpen(false);
+
     let issues;
     let sprintDetails;
 
@@ -181,102 +188,125 @@ const App = () => {
     const calculatedMetrics = calculateMetrics(issues, totalWorkingHours);
     setMetrics(calculatedMetrics);
     setLastRefreshTime(new Date().toLocaleString());
+    setIsLoading(false);
 
-    // Save user preferences when the report is generated
     await saveUserPreferences(selectedProject, selectedBoard, selectedSprint, jql, selectedTab === 0 ? 'project' : 'jql');
   };
 
   return (
     <Stack space="space.300">
-      <Tabs id="performance-tabs" onChange={setSelectedTab} selected={selectedTab}>
-        <TabList>
-          <Tab>Project/Board/Sprint</Tab>
-          <Tab>JQL Query</Tab>
-        </TabList>
-      </Tabs>
+      <Stack alignInline="end">
+        <Button
+          appearance="subtle"
+          iconBefore="settings"
+          onClick={() => setIsModalOpen(true)}
+        />
+      </Stack>
+      <ModalTransition>
+        {isModalOpen && (
+          <Modal onClose={() => setIsModalOpen(false)}>
+            <ModalHeader>
+              <ModalTitle>Settings</ModalTitle>
+            </ModalHeader>
+            <ModalBody>
+              <Stack space="space.200" padding="space.200">
+                <Tabs id="performance-tabs" onChange={setSelectedTab} selected={selectedTab}>
+                  <TabList>
+                    <Tab>Project/Board/Sprint</Tab>
+                    <Tab>JQL Query</Tab>
+                  </TabList>
+                </Tabs>
 
-      <Box padding="space.200" />
+                {selectedTab === 0 && (
+                  <Stack space="space.200">
+                    <Select
+                      placeholder="Select Project"
+                      options={projects}
+                      value={selectedProject}
+                      onChange={(value) => setSelectedProject(value)}
+                      spacing="compact"
+                    />
 
-      {selectedTab === 0 && (
-        <Stack space="space.200">
-          <Select
-            placeholder="Select Project"
-            options={projects}
-            value={selectedProject}
-            onChange={(value) => setSelectedProject(value)}
-          />
+                    <Select
+                      placeholder="Select Board"
+                      options={boards}
+                      value={selectedBoard}
+                      onChange={(value) => setSelectedBoard(value)}
+                      isDisabled={!selectedProject}
+                      spacing="compact"
+                    />
 
-          <Select
-            placeholder="Select Board"
-            options={boards}
-            value={selectedBoard}
-            onChange={(value) => setSelectedBoard(value)}
-            isDisabled={!selectedProject} // Disable Board Select if no project is selected
-          />
+                    <Select
+                      placeholder="Select Sprint"
+                      options={sprints}
+                      value={selectedSprint}
+                      onChange={(value) => setSelectedSprint(value)}
+                      isDisabled={!selectedBoard}
+                      spacing="compact"
+                    />
+                  </Stack>
+                )}
 
-          <Select
-            placeholder="Select Sprint"
-            options={sprints}
-            value={selectedSprint}
-            onChange={(value) => setSelectedSprint(value)}
-            isDisabled={!selectedBoard} // Disable Sprint Select if no board is selected
-          />
-        </Stack>
-      )}
-
-      {selectedTab === 1 && (
-        <>
-          <TextArea
-            placeholder="Enter JQL"
-            value={jql}
-            onChange={(e) => setJql(e.target.value)}
-          />
-          <SectionMessage appearance="warning">
-            Your JQL query must include the project and sprint IDs.
-          </SectionMessage>
-        </>
-      )}
-      <Box>
-        <Button appearance="primary" onClick={handleSubmit}>
-          Generate Report
-        </Button>
-      </Box>
+                {selectedTab === 1 && (
+                  <>
+                    <TextArea
+                      placeholder="Enter JQL"
+                      value={jql}
+                      onChange={(e) => setJql(e.target.value)}
+                    />
+                    <SectionMessage appearance="warning">
+                      Your JQL query must include the project and sprint IDs.
+                    </SectionMessage>
+                  </>
+                )}
+              </Stack>
+            </ModalBody>
+            <ModalFooter>
+              <Button appearance="primary" onClick={handleSubmit}>
+                Generate Report
+              </Button>
+              <Button appearance="link" onClick={() => setIsModalOpen(false)}>
+                Close
+              </Button>
+            </ModalFooter>
+          </Modal>
+        )}
+      </ModalTransition>
 
       {totalWorkingHours && (
         <Heading as="h5">Total Working Hours in Sprint: {totalWorkingHours}</Heading>
       )}
 
-      {metrics && (
-        <DynamicTable
-          head={{
-            cells: [
-              { key: 'developer', content: 'Developer Name' },
-              { key: 'totalEstimatedTime', content: 'Total Estimated Time (hours)' },
-              { key: 'totalTimeSpent', content: 'Total Time Spent (hours)' },
-              { key: 'outstandingTime', content: 'Outstanding Time (hours)' },
-              { key: 'workloadDifference', content: 'Workload Difference (hours)' },
-              { key: 'workloadCompliance', content: 'Workload Compliance (hours)' },
-              { key: 'numberOfTasksCompleted', content: 'Number of Tasks Completed' },
-              { key: 'averageCycleTime', content: 'Average Cycle Time (hours)' },
-              { key: 'numberOfDefects', content: 'Defects Assigned and Resolved' }
-            ]
-          }}
-          rows={Object.keys(metrics).map(developer => ({
-            key: developer,
-            cells: [
-              { key: 'developer', content: developer },
-              { key: 'totalEstimatedTime', content: metrics[developer].totalEstimatedTime.toFixed(2) },
-              { key: 'totalTimeSpent', content: metrics[developer].totalTimeSpent.toFixed(2) },
-              { key: 'outstandingTime', content: metrics[developer].outstandingTime.toFixed(2) },
-              { key: 'workloadDifference', content: metrics[developer].workloadDifference.toFixed(2) },
-              { key: 'workloadCompliance', content: metrics[developer].workloadCompliance.toFixed(2) },
-              { key: 'numberOfTasksCompleted', content: metrics[developer].numberOfTasksCompleted },
-              { key: 'averageCycleTime', content: metrics[developer].averageCycleTime.toFixed(2) },
-              { key: 'numberOfDefects', content: metrics[developer].numberOfDefects }
-            ]
-          }))}
-        />
-      )}
+      <DynamicTable
+        isLoading={isLoading}
+        head={{
+          cells: [
+            { key: 'developer', content: 'Developer Name' },
+            { key: 'totalEstimatedTime', content: 'Total Estimated Time (hours)' },
+            { key: 'totalTimeSpent', content: 'Total Time Spent (hours)' },
+            { key: 'outstandingTime', content: 'Outstanding Time (hours)' },
+            { key: 'workloadDifference', content: 'Workload Difference (hours)' },
+            { key: 'workloadCompliance', content: 'Workload Compliance (hours)' },
+            { key: 'numberOfTasksCompleted', content: 'Number of Tasks Completed' },
+            { key: 'averageCycleTime', content: 'Average Cycle Time (hours)' },
+            { key: 'numberOfDefects', content: 'Defects Assigned and Resolved' }
+          ]
+        }}
+        rows={metrics ? Object.keys(metrics).map(developer => ({
+          key: developer,
+          cells: [
+            { key: 'developer', content: developer },
+            { key: 'totalEstimatedTime', content: metrics[developer].totalEstimatedTime.toFixed(2) },
+            { key: 'totalTimeSpent', content: metrics[developer].totalTimeSpent.toFixed(2) },
+            { key: 'outstandingTime', content: metrics[developer].outstandingTime.toFixed(2) },
+            { key: 'workloadDifference', content: metrics[developer].workloadDifference.toFixed(2) },
+            { key: 'workloadCompliance', content: metrics[developer].workloadCompliance.toFixed(2) },
+            { key: 'numberOfTasksCompleted', content: metrics[developer].numberOfTasksCompleted },
+            { key: 'averageCycleTime', content: metrics[developer].averageCycleTime.toFixed(2) },
+            { key: 'numberOfDefects', content: metrics[developer].numberOfDefects }
+          ]
+        })) : []}
+      />
 
       {lastRefreshTime && (
         <Heading as="h6">Last Refresh Time: {lastRefreshTime}</Heading>
