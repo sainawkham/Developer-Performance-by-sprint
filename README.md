@@ -1,96 +1,90 @@
 # Developer Performance by Sprint - Jira Forge App
 
-This is a Jira Forge app that provides a comprehensive report on individual developer performance in each sprint. The report can be generated based on project, board, and sprint selection or by using custom JQL queries. The app calculates various metrics such as total estimated time, total time spent, workload difference, compliance, and more.
+This project is a Jira Forge application that provides a report on developer performance during a sprint. The report system displays various metrics including estimated time, time spent, workload compliance, and more, for each developer. The goal of this project is to help Scrum Masters and Project Managers monitor the efficiency of their teams during a sprint.
 
 ## Features
+- **Select Project, Board, and Sprint**: Choose a Jira project, board, and sprint to generate a performance report.
+- **JQL Query**: Use a JQL query to filter issues and generate a report.
+- **Non-Working Days**: Provide a Google Sheet link containing the non-working days, which will be taken into account when calculating working hours.
+- **Developer Metrics**: View detailed metrics including total estimated time, total time spent, outstanding time, workload difference, workload compliance, tasks completed, average cycle time, and defects assigned and resolved for each developer.
 
-- **Developer Performance Report**: View detailed metrics for individual developers including time spent, tasks completed, defects resolved, and more.
-- **Sprint Overview**: Displays total working hours in the sprint, based on the selected sprint or custom JQL query.
-- **Dynamic Report Generation**: Generate reports instantly with project, board, and sprint filters, or by using JQL.
-- **User Preferences**: Save user-selected preferences (project, board, sprint, JQL) for quick access and auto-report generation on page load.
+## Prerequisites
+- Jira instance with Forge app permissions enabled.
+- A valid Jira account with sufficient permissions to access projects and boards.
+- A Google Sheet link containing non-working days in DD/MM/YYYY format.
 
-## Installation and Setup
-
-### Prerequisites
-
-- [Forge CLI](https://developer.atlassian.com/platform/forge/set-up-forge/)
-- Atlassian Jira Cloud account
-
-### Quick Start
-
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd developer-performance-by-sprint
+## Installation
+1. Clone the repository from GitHub:
+   ```sh
+   git clone https://github.com/yourusername/jira-report-dashboard.git
+   cd jira-report-dashboard
    ```
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+2. Install the Forge CLI if it is not already installed. For installation instructions, refer to [Forge CLI documentation](https://developer.atlassian.com/platform/forge/cli/).
 
-3. **Deploy the app**:
-   Use the following Forge CLI commands:
-   ```bash
+3. Deploy the Forge app:
+   ```sh
    forge deploy
    ```
 
-4. **Install the app**:
-   After deployment, install the app into your Jira instance:
-   ```bash
+4. Install the app in your Jira instance:
+   ```sh
    forge install
    ```
+   Follow the prompts to install the app on your Jira site.
 
-5. **Tunnel to test locally**:
-   Use Forge tunnel for local development to see changes without redeploying:
-   ```bash
-   forge tunnel
-   ```
+## Usage
+1. After installing the app, navigate to the **Developer Performance by Sprint** page under your Jira project.
 
-### Running the App
+2. Click on the **Settings** button (gear icon) to open the configuration modal.
+   - **Project/Board/Sprint Tab**: Select a project, board, and sprint to generate a report.
+   - **JQL Query Tab**: Alternatively, enter a JQL query to filter issues for the report.
+   - **Non Working Days Tab**: Provide the Google Sheet link containing the non-working days. The sheet should have dates in DD/MM/YYYY format.
 
-1. Navigate to the **Developer Performance by Sprint** page in your Jira project.
-2. Choose between two options to generate a report:
-   - **Project/Board/Sprint**: Select a project, board, and sprint to generate the report.
-   - **JQL Query**: Enter a custom JQL query to generate the report based on specific criteria.
-3. Click the **Generate Report** button to view the performance metrics.
-4. Your preferences will be automatically saved for future sessions.
+3. After configuring the settings, click the **Generate Report** button on the page to view the developer metrics.
 
-### Key Metrics
-
-The report includes the following metrics for each developer:
-- **Total Estimated Time (hours)**: Sum of the estimated time for all tasks.
-- **Total Time Spent (hours)**: Time logged by the developer in the sprint.
-- **Outstanding Time (hours)**: Difference between the estimated time and the time spent.
-- **Workload Difference**: Difference between total time spent and the total working hours in the sprint.
-- **Workload Compliance**: Difference between total estimated time and total working hours.
-- **Number of Tasks Completed**: Count of tasks completed in the sprint.
+## Metrics Explained
+- **Total Estimated Time**: Total hours estimated for the tasks assigned to a developer.
+- **Total Time Spent**: Total hours logged by the developer during the sprint.
+- **Outstanding Time**: Difference between estimated time and time spent.
+- **Workload Difference**: Difference between time spent and expected working hours.
+- **Workload Compliance**: Difference between estimated time and expected working hours.
+- **Number of Tasks Completed**: Total number of completed tasks.
 - **Average Cycle Time**: Average time taken to complete tasks.
-- **Number of Defects**: Count of defects assigned and resolved by the developer.
+- **Defects Assigned and Resolved**: Number of defect issues assigned and resolved.
 
-## Permissions
+## Google Sheet Setup
+Provide a Google Sheet link containing the non-working days. Each non-working day should be listed in **DD/MM/YYYY** format, one per row. This helps in accurate calculation of the total working hours during the sprint.
 
-This app requires the following Jira permissions:
+## Known Issues
+- **Undefined Dates**: If sprint start and end dates are displayed as "undefined", ensure that sprint details are fetched properly by verifying permissions and data availability.
+- **Report Not Generated on Dropdown Selection**: Report generation is triggered only when the **Generate Report** button is clicked.
 
-```yaml
-permissions:
-  scopes:
-    - read:jira-work
-    - read:board-scope:jira-software
-    - read:project:jira
-    - read:sprint:jira-software
-    - storage:app
-```
+## Contributing
+Contributions are welcome! If you find a bug or have a suggestion for improvement, feel free to open an issue or submit a pull request.
 
-## Storage and Data
+1. Fork the repository.
+2. Create your feature branch:
+   ```sh
+   git checkout -b feature/AmazingFeature
+   ```
+3. Commit your changes:
+   ```sh
+   git commit -m 'Add some AmazingFeature'
+   ```
+4. Push to the branch:
+   ```sh
+   git push origin feature/AmazingFeature
+   ```
+5. Open a pull request.
 
-- **Persistent Storage**: User preferences (project, board, sprint, JQL) are saved using Forge's storage API.
-- **Data Security**: All data is securely stored and encrypted following Atlassian's security guidelines.
+## License
+This project is licensed under the MIT License. See the LICENSE file for more information.
 
-## Support and Contributions
+## Acknowledgments
+- Atlassian for providing the Jira Forge framework.
+- The Jira development community for valuable insights and support.
 
-If you encounter any issues or want to contribute to this project, feel free to open an issue or submit a pull request.
+## Contact
+If you have any questions, feel free to contact the repository owner at [sainawkham@globalwave.com.mm].
 
----
-
-This `README.md` provides an overview of the app, instructions for installation, key features, and usage details. Let me know if you'd like to make any adjustments!
