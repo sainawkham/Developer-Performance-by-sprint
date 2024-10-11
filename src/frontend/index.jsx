@@ -1,21 +1,23 @@
 import React, { useEffect, useState } from "react";
 import ForgeReconciler, {
+  Heading,
   Text,
   Select,
   Button,
   Stack,
   DynamicTable,
-  Tabs, Tab, TabList,
+  Tabs,
+  Tab,
+  TabList,
   TextArea,
   SectionMessage,
-  Box,
-  Heading,
   Modal,
   ModalBody,
   ModalTransition,
   ModalTitle,
   ModalFooter,
-  ModalHeader
+  ModalHeader,
+  Inline,
 } from "@forge/react";
 import { invoke } from "@forge/bridge";
 
@@ -35,15 +37,14 @@ const fetchSprints = async (boardId) => {
 };
 
 const fetchIssuesByJQL = async (jql) => {
-  const decodedJql = decodeHtmlEntities(jql);
-  const response = await invoke('getIssuesByJQL', { jql: decodedJql });
-  return response;
+  const response = await invoke('getIssuesByJQL', { jql });
+  return Array.isArray(response) ? response : [];
 };
 
 // Save user preferences
-const saveUserPreferences = async (project, board, sprint, jql, option) => {
-  console.log('Saving user preferences:', { project, board, sprint, jql, option });
-  await invoke('saveUserPreferences', { project, board, sprint, jql, option });
+const saveUserPreferences = async (project, board, sprint, jql, googleSheetLink, option) => {
+  console.log('Saving user preferences:', { project, board, sprint, jql, googleSheetLink, option });
+  await invoke('saveUserPreferences', { project, board, sprint, jql, googleSheetLink, option });
   console.log('Preferences saved successfully.');
 };
 
@@ -54,6 +55,51 @@ const getUserPreferences = async () => {
   return preferences;
 };
 
+// Format date to DD/MM/YYYY
+const formatDate = (dateString) => {
+  if (!dateString) return 'undefined';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'undefined';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+// Parse date from DD/MM/YYYY format
+const parseDate = (dateString) => {
+  const [day, month, year] = dateString.split('/');
+  if (day && month && year) {
+    return new Date(`${year}-${month}-${day}`);
+  }
+  return new Date(NaN); // Return an invalid date if the format is incorrect
+};
+
+const calculateWorkingDays = (startDate, endDate, nonWorkingDays) => {
+  let count = 0;
+  const currentDate = new Date(startDate);
+
+  // Convert non-working days to Date objects and filter out any invalid dates
+  const formattedNonWorkingDays = nonWorkingDays
+    .map(day => {
+      const parsedDate = parseDate(day);
+      return parsedDate.toString() !== "Invalid Date" ? parsedDate.toDateString() : null;
+    })
+    .filter(date => date !== null);
+
+  console.log("Formatted Non-Working Days:", formattedNonWorkingDays);
+
+  while (currentDate <= new Date(endDate)) {
+    const currentDateString = currentDate.toDateString();
+    if (!formattedNonWorkingDays.includes(currentDateString)) {
+      count++;
+    }
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  return count;
+};
+
+// Calculate metrics based on issues and total working hours
 const calculateMetrics = (issues, totalWorkingHours) => {
   const metrics = {};
   issues.forEach(issue => {
@@ -94,19 +140,6 @@ const calculateMetrics = (issues, totalWorkingHours) => {
   return metrics;
 };
 
-const calculateWorkingDays = (startDate, endDate) => {
-  let count = 0;
-  const currentDate = new Date(startDate);
-  while (currentDate <= new Date(endDate)) {
-    const dayOfWeek = currentDate.getDay();
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Skip Sundays and Saturdays
-      count++;
-    }
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
-  return count;
-};
-
 const App = () => {
   const [projects, setProjects] = useState([]);
   const [boards, setBoards] = useState([]);
@@ -114,12 +147,13 @@ const App = () => {
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedBoard, setSelectedBoard] = useState(null);
   const [selectedSprint, setSelectedSprint] = useState(null);
+  const [sprintDetails, setSprintDetails] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [totalWorkingHours, setTotalWorkingHours] = useState(null);
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
   const [jql, setJql] = useState('');
+  const [googleSheetLink, setGoogleSheetLink] = useState('');
   const [selectedTab, setSelectedTab] = useState(0);
-  const [autoSubmitTriggered, setAutoSubmitTriggered] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -127,18 +161,23 @@ const App = () => {
     const loadUserPreferences = async () => {
       const projects = await fetchProjects();
       setProjects(projects);
-  
+
       const preferences = await getUserPreferences();
       if (preferences && preferences.project && preferences.sprint) {
         setSelectedProject(preferences.project);
         setSelectedBoard(preferences.board);
         setSelectedSprint(preferences.sprint);
         setJql(preferences.jql);
+        setGoogleSheetLink(preferences.googleSheetLink || '');
         setSelectedTab(preferences.option === 'jql' ? 1 : 0);
+
+        // Load sprint details when preference exists
+        const fetchedSprintDetails = await invoke('getSprintDetails', { sprintId: preferences.sprint.value });
+        setSprintDetails(fetchedSprintDetails);
       }
     };
     loadUserPreferences();
-  }, []);  
+  }, []);
 
   useEffect(() => {
     if (selectedProject) {
@@ -161,28 +200,41 @@ const App = () => {
   }, [selectedBoard]);
 
   useEffect(() => {
-    if (selectedProject && selectedBoard && selectedSprint && !autoSubmitTriggered) {
-      handleSubmit();  // Automatically generate the report
-      setAutoSubmitTriggered(true); // Avoid re-triggering the auto-submit
+    if (selectedSprint) {
+      const loadSprintDetails = async () => {
+        const fetchedSprintDetails = await invoke('getSprintDetails', { sprintId: selectedSprint.value });
+        setSprintDetails(fetchedSprintDetails);
+      };
+      loadSprintDetails();
     }
-  }, [selectedProject, selectedBoard, selectedSprint, autoSubmitTriggered]);
+  }, [selectedSprint]);
 
-  const handleSubmit = async () => {
+  const generateReport = async () => {
+    if (!selectedProject || !selectedBoard || !selectedSprint) {
+      return;
+    }
+
     setIsLoading(true);
     setIsModalOpen(false);
 
-    let issues;
-    let sprintDetails;
+    let issues = [];
 
-    if (selectedTab === 0 && selectedProject && selectedSprint) {
-      sprintDetails = await invoke('getSprintDetails', { sprintId: selectedSprint.value });
-      const workingDays = calculateWorkingDays(sprintDetails.startDate, sprintDetails.endDate);
+    if (selectedProject && selectedSprint) {
+      // Get non-working days from Google Sheets
+      const nonWorkingDays = await invoke('getNonWorkingDays', { googleSheetLink });
+      const workingDays = calculateWorkingDays(sprintDetails.startDate, sprintDetails.endDate, nonWorkingDays);
       const workingHours = workingDays * 7; // 7 working hours per day
       setTotalWorkingHours(workingHours);
 
       issues = await invoke('getSprintData', { projectId: selectedProject.value, sprintId: selectedSprint.value });
-    } else {
+    } else if (jql && googleSheetLink) {
       issues = await fetchIssuesByJQL(jql);
+      // Set a default totalWorkingHours value if no sprint details available.
+      setTotalWorkingHours(0);
+    }
+
+    if (!Array.isArray(issues)) {
+      issues = [];
     }
 
     const calculatedMetrics = calculateMetrics(issues, totalWorkingHours);
@@ -190,18 +242,31 @@ const App = () => {
     setLastRefreshTime(new Date().toLocaleString());
     setIsLoading(false);
 
-    await saveUserPreferences(selectedProject, selectedBoard, selectedSprint, jql, selectedTab === 0 ? 'project' : 'jql');
+    await saveUserPreferences(selectedProject, selectedBoard, selectedSprint, jql, googleSheetLink, selectedTab === 0 ? 'project' : 'jql');
   };
 
   return (
     <Stack space="space.300">
-      <Stack alignInline="end">
+      <Inline space="space.200"  alignInline="end">
+        <Button
+          appearance="primary"
+          onClick={generateReport}
+        >
+          Generate Report
+        </Button>
         <Button
           appearance="subtle"
           iconBefore="settings"
           onClick={() => setIsModalOpen(true)}
         />
-      </Stack>
+      </Inline>
+
+      {!selectedProject && (
+        <SectionMessage appearance="warning">
+          Please select a project, board, sprint, and add the Google Sheets link for non-working days to generate the report.
+        </SectionMessage>
+      )}
+
       <ModalTransition>
         {isModalOpen && (
           <Modal onClose={() => setIsModalOpen(false)}>
@@ -214,6 +279,7 @@ const App = () => {
                   <TabList>
                     <Tab>Project/Board/Sprint</Tab>
                     <Tab>JQL Query</Tab>
+                    <Tab>Non Working Days</Tab>
                   </TabList>
                 </Tabs>
 
@@ -259,22 +325,48 @@ const App = () => {
                     </SectionMessage>
                   </>
                 )}
+
+                {selectedTab === 2 && (
+                  <Stack space="space.200">
+                    <TextArea
+                      placeholder="Google Sheet Link for Non Working Days"
+                      value={googleSheetLink}
+                      onChange={(e) => setGoogleSheetLink(e.target.value)}
+                      spacing="compact"
+                    />
+                    <SectionMessage appearance="information">
+                      Provide a Google Sheet link that contains the non-working days in DD/MM/YYYY format.
+                    </SectionMessage>
+                  </Stack>
+                )}
               </Stack>
             </ModalBody>
             <ModalFooter>
-              <Button appearance="primary" onClick={handleSubmit}>
-                Generate Report
-              </Button>
-              <Button appearance="link" onClick={() => setIsModalOpen(false)}>
-                Close
-              </Button>
+              <Inline space="space.200">
+                <Button appearance="primary" onClick={generateReport}>
+                  Generate Report
+                </Button>
+                <Button appearance="link" onClick={() => setIsModalOpen(false)}>
+                  Close
+                </Button>
+              </Inline>
             </ModalFooter>
           </Modal>
         )}
       </ModalTransition>
 
-      {totalWorkingHours && (
-        <Heading as="h5">Total Working Hours in Sprint: {totalWorkingHours}</Heading>
+      {selectedProject && selectedSprint && sprintDetails && (
+        <Stack space="space.100">
+          <Heading as="h6">
+            Project Name: {selectedProject.label}
+          </Heading>
+          <Heading as="h6">
+            Sprint: {selectedSprint.label} ({formatDate(sprintDetails.startDate)} - {formatDate(sprintDetails.endDate)})
+          </Heading>
+          <Heading as="h6">
+            Total Working Hours in Sprint: {totalWorkingHours}
+          </Heading>
+        </Stack>
       )}
 
       <DynamicTable
@@ -309,7 +401,7 @@ const App = () => {
       />
 
       {lastRefreshTime && (
-        <Heading as="h6">Last Refresh Time: {lastRefreshTime}</Heading>
+        <Text as="p">Last Refresh Time: {lastRefreshTime}</Text>
       )}
     </Stack>
   );

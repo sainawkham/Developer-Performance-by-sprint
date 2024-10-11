@@ -8,9 +8,9 @@ let selectedSprint = null;
 
 // Save user preferences
 resolver.define('saveUserPreferences', async ({ payload }) => {
-  const { project, board, sprint, jql, option } = payload;
-  console.log('Saving user preferences:', { project, board, sprint, jql, option });
-  await storage.set('userPreferences', { project, board, sprint, jql, option });
+  const { project, board, sprint, jql, googleSheetLink, option } = payload;
+  console.log('Saving user preferences:', { project, board, sprint, jql, googleSheetLink, option });
+  await storage.set('userPreferences', { project, board, sprint, jql, googleSheetLink, option });
   return 'Preferences saved successfully.';
 });
 
@@ -46,7 +46,6 @@ resolver.define('getSprintData', async ({ payload }) => {
   let maxResults = 50;
   let allIssues = [];
 
-  // Initial request to get the total number of issues
   const initialResponse = await api.asUser().requestJira(route`/rest/api/3/search?jql=project=${projectId}%20AND%20Sprint=${sprintId}&startAt=${startAt}&maxResults=1`, {
     headers: {
       'Accept': 'application/json'
@@ -55,7 +54,6 @@ resolver.define('getSprintData', async ({ payload }) => {
   const initialData = await initialResponse.json();
   const total = initialData.total;
 
-  // Fetch issues in batches until all issues are retrieved
   while (startAt < total) {
     const response = await api.asUser().requestJira(route`/rest/api/3/search?jql=project=${projectId}%20AND%20Sprint=${sprintId}&startAt=${startAt}&maxResults=${maxResults}`, {
       headers: {
@@ -76,22 +74,47 @@ resolver.define('getSprintDetails', async ({ payload }) => {
   return data;
 });
 
-resolver.define('setSelectedProject', (req) => {
-  selectedProject = req.payload.projectId;
-  return selectedProject;
-});
+resolver.define('getNonWorkingDays', async ({ payload }) => {
+  const { googleSheetLink } = payload;
 
-resolver.define('getSelectedProject', () => {
-  return { id: selectedProject, name: selectedProject };
-});
+  try {
+    console.log("Reached here for fetching Google Sheet");
+    const google = api.asUser().withProvider('google');
 
-resolver.define('setSelectedSprint', (req) => {
-  selectedSprint = req.payload.sprintId;
-  return selectedSprint;
-});
+    if (!await google.hasCredentials()) {
+      await google.requestCredentials();
+    }
 
-resolver.define('getSelectedSprint', () => {
-  return { id: selectedSprint, name: selectedSprint };
+    // Extract the sheet ID from the provided Google Sheet link
+    const sheetIdMatch = googleSheetLink.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (!sheetIdMatch) {
+      throw new Error('Invalid Google Sheet link');
+    }
+    const sheetId = sheetIdMatch[1];
+    console.log("Sheet ID:", sheetId);
+
+    // Fetch non-working days from the Google Sheet
+    const response = await google.fetch(`/v4/spreadsheets/${sheetId}/values/Sheet1!A:A`);
+    console.log("response:", response);
+    const responseData = await response.json();
+
+    if (response.status === 200) {
+      const rows = responseData.values;
+      if (rows.length) {
+        const nonWorkingDays = rows.map(row => row[0]);
+        console.log('Non-working days:', nonWorkingDays);
+        return nonWorkingDays;
+      } else {
+        console.log('No data found.');
+        return [];
+      }
+    } else {
+      throw new Error(`Error fetching data from Google Sheets: ${response.status} - ${responseData.error.message}`);
+    }
+  } catch (error) {
+    console.error('Error fetching non-working days:', error);
+    return [];
+  }
 });
 
 resolver.define('getIssuesByJQL', async ({ payload }) => {
@@ -100,7 +123,6 @@ resolver.define('getIssuesByJQL', async ({ payload }) => {
   let maxResults = 50;
   let allIssues = [];
 
-  // Initial request to get the total number of issues
   const initialResponse = await api.asUser().requestJira(route`/rest/api/3/search?jql=${jql}&startAt=${startAt}&maxResults=1`, {
     headers: {
       'Accept': 'application/json'
@@ -109,7 +131,6 @@ resolver.define('getIssuesByJQL', async ({ payload }) => {
   const initialData = await initialResponse.json();
   const total = initialData.total;
 
-  // Fetch issues in batches until all issues are retrieved
   while (startAt < total) {
     const response = await api.asUser().requestJira(route`/rest/api/3/search?jql=${jql}&startAt=${startAt}&maxResults=${maxResults}`, {
       headers: {
