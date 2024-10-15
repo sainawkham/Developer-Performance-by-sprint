@@ -81,8 +81,17 @@ resolver.define('getNonWorkingDays', async ({ payload }) => {
     console.log("Reached here for fetching Google Sheet");
     const google = api.asUser().withProvider('google');
 
-    if (!await google.hasCredentials()) {
-      await google.requestCredentials();
+    // Check if credentials exist and are valid
+    let hasCredentials = await google.hasCredentials();
+    if (!hasCredentials) {
+      console.log("Requesting Google credentials...");
+      await google.requestCredentials();  // Prompt the user to reauthorize
+      hasCredentials = await google.hasCredentials();  // Recheck after requesting credentials
+    }
+
+    // Proceed only if credentials are obtained
+    if (!hasCredentials) {
+      throw new Error("Failed to acquire Google credentials. Please try again.");
     }
 
     // Extract the sheet ID from the provided Google Sheet link
@@ -93,7 +102,7 @@ resolver.define('getNonWorkingDays', async ({ payload }) => {
     const sheetId = sheetIdMatch[1];
     console.log("Sheet ID:", sheetId);
 
-    // Fetch non-working days from the Google Sheet
+    // Fetch non-working days from the Google Sheet using the full URL
     const response = await google.fetch(`/v4/spreadsheets/${sheetId}/values/Sheet1!A:A`);
     console.log("response:", response);
     const responseData = await response.json();
@@ -113,9 +122,10 @@ resolver.define('getNonWorkingDays', async ({ payload }) => {
     }
   } catch (error) {
     console.error('Error fetching non-working days:', error);
-    return [];
+    throw error;
   }
 });
+
 
 resolver.define('getIssuesByJQL', async ({ payload }) => {
   const { jql } = payload;
