@@ -88,3 +88,6 @@ This project is licensed under the MIT License. See the LICENSE file for more in
 ## Contact
 If you have any questions, feel free to contact the repository owner at [sainawkham@globalwave.com.mm].
 
+## Privacy policy
+Please check at [https://github.com/sainawkham/Developer-Performance-by-sprint/blob/main/PRIVACY.md] for privacy policy.
+
