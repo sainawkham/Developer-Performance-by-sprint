@@ -42,4 +42,4 @@ We may update this Privacy Policy from time to time. The latest version will alw
 
 ### 7. Contact Us
 
-If you have any questions about our Privacy Policy, please contact us at [Insert Contact Information].
+If you have any questions about our Privacy Policy, please contact us at [sainawkham@globalwave.com.mm].
